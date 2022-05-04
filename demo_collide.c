@@ -8,8 +8,47 @@
 int paused;
 camera_t cam;
 
+int  gCanvasWidth;
+int  gCanvasHeight;
+long gx0;
+long gy0;
+long gx1;
+long gy1;
+long gStartMoveX;
+long gStartMoveY;
+long gPrevTouchX0;
+long gPrevTouchY0;
+long gPrevTouchX1;
+long gPrevTouchY1;
+int  gSkipTouch;
+
 void game_loop(void *userdata) {
     if(!window_swap()) return;
+
+    // NOTE(Constantine): Touch events for every frame.
+    {
+      const int canvasHalfWidth = gCanvasWidth / 2;
+
+      const float sensitivity = 0.005f;
+      long moveX      = 0;
+      long moveY      = 0;
+      long startMoveX = 0;
+      long startMoveY = 0;
+      if (gStartMoveX != 0 && gStartMoveY != 0) {
+        if (gx0 > 0 && gx0 < canvasHalfWidth) {
+          moveX      = gx0;
+          moveY      = gy0;
+          startMoveX = gStartMoveX;
+          startMoveY = gStartMoveY;
+        } else if (gx1 > 0 && gx1 < canvasHalfWidth) {
+          moveX      = gx1;
+          moveY      = gy1;
+          startMoveX = gStartMoveX;
+          startMoveY = gStartMoveY;
+        }
+      }
+      camera_move(&cam, (moveX - startMoveX) * sensitivity, 0, (startMoveY - moveY) * sensitivity);
+    }
 
     // key handler
     if (input_down(KEY_F11) ) window_fullscreen( window_has_fullscreen()^1 );
@@ -564,6 +603,98 @@ void game_loop(void *userdata) {
     }
 }
 
+EM_BOOL touch_start(int eventType, const EmscriptenTouchEvent * e, void * userData) {
+  gx0 = e->touches[0].screenX;
+  gy0 = e->touches[0].screenY;
+  gx1 = e->touches[1].screenX;
+  gy1 = e->touches[1].screenY;
+
+  const int canvasHalfWidth = gCanvasWidth / 2;
+
+  if (gStartMoveX == 0 && gStartMoveY == 0) {
+    if (gx0 > 0 && gx0 < canvasHalfWidth) {
+      gStartMoveX = gx0;
+      gStartMoveY = gy0;
+    } else if (gx1 > 0 && gx1 < canvasHalfWidth) {
+      gStartMoveX = gx1;
+      gStartMoveY = gy1;
+    }
+  }
+
+  gPrevTouchX0 = gx0;
+  gPrevTouchY0 = gy0;
+  gPrevTouchX1 = gx1;
+  gPrevTouchY1 = gy1;
+
+  return EM_TRUE;
+}
+
+EM_BOOL touch_end(int eventType, const EmscriptenTouchEvent * e, void * userData) {
+  gx0 = e->touches[0].screenX;
+  gy0 = e->touches[0].screenY;
+  gx1 = e->touches[1].screenX;
+  gy1 = e->touches[1].screenY;
+
+  gSkipTouch = 1;
+
+  if (e->numTouches == 1) {
+    gStartMoveX = 0;
+    gStartMoveY = 0;
+  }
+
+  gPrevTouchX0 = gx0;
+  gPrevTouchY0 = gy0;
+  gPrevTouchX1 = gx1;
+  gPrevTouchY1 = gy1;
+
+  return EM_TRUE;
+}
+
+EM_BOOL touch_move(int eventType, const EmscriptenTouchEvent * e, void * userData) {
+  gx0 = e->touches[0].screenX;
+  gy0 = e->touches[0].screenY;
+  gx1 = e->touches[1].screenX;
+  gy1 = e->touches[1].screenY;
+
+  if (gSkipTouch == 1) {
+    gSkipTouch = 0;
+
+    gPrevTouchX0 = gx0;
+    gPrevTouchY0 = gy0;
+    gPrevTouchX1 = gx1;
+    gPrevTouchY1 = gy1;
+
+    return EM_TRUE;
+  }
+
+  const int canvasHalfWidth = gCanvasWidth / 2;
+
+  const float sensitivity = 0.25f;
+  long rotX     = 0;
+  long rotY     = 0;
+  long prevRotX = 0;
+  long prevRotY = 0;
+  if (gx0 > canvasHalfWidth) {
+    rotX     = gx0;
+    rotY     = gy0;
+    prevRotX = gPrevTouchX0;
+    prevRotY = gPrevTouchY0;
+  } else if (gx1 > canvasHalfWidth) {
+    rotX     = gx1;
+    rotY     = gy1;
+    prevRotX = gPrevTouchX1;
+    prevRotY = gPrevTouchY1;
+  }
+  camera_fps(&cam, (rotX - prevRotX) * sensitivity, (prevRotY - rotY) * sensitivity);
+
+  gPrevTouchX0 = gx0;
+  gPrevTouchY0 = gy0;
+  gPrevTouchX1 = gx1;
+  gPrevTouchY1 = gy1;
+
+  return EM_TRUE;
+}
+
 int main(void) {
     // 75% sized, msaa x4 enabled
     window_create(0.75f, WINDOW_MSAA4);
@@ -575,6 +706,22 @@ int main(void) {
 
     // camera that points to origin
     cam = camera();
+
+    gx0          = 0;
+    gy0          = 0;
+    gx1          = 0;
+    gy1          = 0;
+    gStartMoveX  = 0;
+    gStartMoveY  = 0;
+    gPrevTouchX0 = 0;
+    gPrevTouchY0 = 0;
+    gPrevTouchX1 = 0;
+    gPrevTouchY1 = 0;
+    gSkipTouch   = 0;
+    emscripten_get_canvas_element_size("#canvas", &gCanvasWidth, &gCanvasHeight);
+    emscripten_set_touchstart_callback("#canvas", 0, EM_FALSE, &touch_start);
+    emscripten_set_touchend_callback("#canvas", 0, EM_FALSE, &touch_end);
+    emscripten_set_touchmove_callback("#canvas", 0, EM_FALSE, &touch_move);
 
     // main loop
     window_loop(game_loop, NULL);
