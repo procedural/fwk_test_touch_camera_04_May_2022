@@ -8,8 +8,36 @@
 int paused;
 camera_t cam;
 
+int  gCanvasWidth;
+int  gCanvasHeight;
+long gMoveX;
+long gMoveY;
+long gStartMoveX;
+long gStartMoveY;
+long gRotX;
+long gRotY;
+long gPrevRotX;
+long gPrevRotY;
+long gPrevTouchX0;
+long gPrevTouchY0;
+long gPrevTouchX1;
+long gPrevTouchY1;
+long gPrevNT;
+int  gPrevSM;
+int  gPrevSR;
+
 void game_loop(void *userdata) {
     if(!window_swap()) return;
+
+    // NOTE(Constantine): Touch events for every frame.
+    {
+      const float sensitivityMove = 0.005f;
+      const float sensitivityRot  = 0.25f;
+      camera_move(&cam, (gMoveX - gStartMoveX) * sensitivityMove, 0, (gStartMoveY - gMoveY) * sensitivityMove);
+      camera_fps(&cam, (gRotX - gPrevRotX) * sensitivityRot, (gPrevRotY - gRotY) * sensitivityRot);
+      gPrevRotX = gRotX;
+      gPrevRotY = gRotY;
+    }
 
     // key handler
     if (input_down(KEY_F11) ) window_fullscreen( window_has_fullscreen()^1 );
@@ -564,6 +592,133 @@ void game_loop(void *userdata) {
     }
 }
 
+EM_BOOL touch_start(int eventType, const EmscriptenTouchEvent * e, void * userData) {
+  long x0 = e->touches[0].screenX;
+  long y0 = e->touches[0].screenY;
+  long x1 = e->touches[1].screenX;
+  long y1 = e->touches[1].screenY;
+  long nt = e->numTouches;
+
+  const int canvasHalfWidth = gCanvasWidth / 2;
+
+  int  sm  = 0; // NOTE(Constantine): Side Move
+  int  sr  = 0; // NOTE(Constantine): Side Rotation
+  long xm  = 0; // NOTE(Constantine): X Move
+  long ym  = 0; // NOTE(Constantine): Y Move
+  long xr  = 0; // NOTE(Constantine): X Rotation
+  long yr  = 0; // NOTE(Constantine): Y Rotation
+  long xrp = 0; // NOTE(Constantine): X Rotation Previous
+  long yrp = 0; // NOTE(Constantine): Y Rotation Previous
+  if      (x0 < canvasHalfWidth)           { sm = 1; xm = x0; ym = y0; }
+  else if (x1 < canvasHalfWidth && nt > 1) { sm = 2; xm = x1; ym = y1; }
+  if      (x0 > canvasHalfWidth)           { sr = 1; xr = x0; yr = y0; xrp = gPrevTouchX0; yrp = gPrevTouchY0; }
+  else if (x1 > canvasHalfWidth && nt > 1) { sr = 2; xr = x1; yr = y1; xrp = gPrevTouchX1; yrp = gPrevTouchY1; }
+
+  gPrevTouchX0 = x0;
+  gPrevTouchY0 = y0;
+  gPrevTouchX1 = x1;
+  gPrevTouchY1 = y1;
+  gPrevNT      = nt;
+  gPrevSM      = sm;
+  gPrevSR      = sr;
+
+  return EM_TRUE;
+}
+
+EM_BOOL touch_move(int eventType, const EmscriptenTouchEvent * e, void * userData) {
+  long x0 = e->touches[0].screenX;
+  long y0 = e->touches[0].screenY;
+  long x1 = e->touches[1].screenX;
+  long y1 = e->touches[1].screenY;
+  long nt = e->numTouches;
+
+  const int canvasHalfWidth = gCanvasWidth / 2;
+
+  int  sm  = 0; // NOTE(Constantine): Side Move
+  int  sr  = 0; // NOTE(Constantine): Side Rotation
+  long xm  = 0; // NOTE(Constantine): X Move
+  long ym  = 0; // NOTE(Constantine): Y Move
+  long xr  = 0; // NOTE(Constantine): X Rotation
+  long yr  = 0; // NOTE(Constantine): Y Rotation
+  long xrp = 0; // NOTE(Constantine): X Rotation Previous
+  long yrp = 0; // NOTE(Constantine): Y Rotation Previous
+  if      (x0 < canvasHalfWidth)           { sm = 1; xm = x0; ym = y0; }
+  else if (x1 < canvasHalfWidth && nt > 1) { sm = 2; xm = x1; ym = y1; }
+  if      (x0 > canvasHalfWidth)           { sr = 1; xr = x0; yr = y0; xrp = gPrevTouchX0; yrp = gPrevTouchY0; }
+  else if (x1 > canvasHalfWidth && nt > 1) { sr = 2; xr = x1; yr = y1; xrp = gPrevTouchX1; yrp = gPrevTouchY1; }
+
+  if (sm != 0) {
+    if (gStartMoveX == 0 && gStartMoveY == 0) {
+      gStartMoveX = xm;
+      gStartMoveY = ym;
+    }
+    gMoveX = xm;
+    gMoveY = ym;
+  } else {
+    gStartMoveX = 0;
+    gStartMoveY = 0;
+    gMoveX      = 0;
+    gMoveY      = 0;
+  }
+
+  if (sr != 0 && gPrevNT == nt) {
+    gRotX     = xr;
+    gRotY     = yr;
+    gPrevRotX = xrp;
+    gPrevRotY = yrp;
+  }
+
+  gPrevTouchX0 = x0;
+  gPrevTouchY0 = y0;
+  gPrevTouchX1 = x1;
+  gPrevTouchY1 = y1;
+  gPrevNT      = nt;
+  gPrevSM      = sm;
+  gPrevSR      = sr;
+
+  return EM_TRUE;
+}
+
+EM_BOOL touch_end(int eventType, const EmscriptenTouchEvent * e, void * userData) {
+  long x0 = e->touches[0].screenX;
+  long y0 = e->touches[0].screenY;
+  long x1 = e->touches[1].screenX;
+  long y1 = e->touches[1].screenY;
+  long nt = e->numTouches;
+
+  const int canvasHalfWidth = gCanvasWidth / 2;
+
+  int  sm  = 0; // NOTE(Constantine): Side Move
+  int  sr  = 0; // NOTE(Constantine): Side Rotation
+  long xm  = 0; // NOTE(Constantine): X Move
+  long ym  = 0; // NOTE(Constantine): Y Move
+  long xr  = 0; // NOTE(Constantine): X Rotation
+  long yr  = 0; // NOTE(Constantine): Y Rotation
+  long xrp = 0; // NOTE(Constantine): X Rotation Previous
+  long yrp = 0; // NOTE(Constantine): Y Rotation Previous
+  if      (x0 < canvasHalfWidth)           { sm = 1; xm = x0; ym = y0; }
+  else if (x1 < canvasHalfWidth && nt > 1) { sm = 2; xm = x1; ym = y1; }
+  if      (x0 > canvasHalfWidth)           { sr = 1; xr = x0; yr = y0; xrp = gPrevTouchX0; yrp = gPrevTouchY0; }
+  else if (x1 > canvasHalfWidth && nt > 1) { sr = 2; xr = x1; yr = y1; xrp = gPrevTouchX1; yrp = gPrevTouchY1; }
+
+  if (nt == 1) {
+    gStartMoveX = 0;
+    gStartMoveY = 0;
+    gMoveX      = 0;
+    gMoveY      = 0;
+  }
+
+  gPrevTouchX0 = x0;
+  gPrevTouchY0 = y0;
+  gPrevTouchX1 = x1;
+  gPrevTouchY1 = y1;
+  gPrevNT      = nt;
+  gPrevSM      = sm;
+  gPrevSR      = sr;
+
+  return EM_TRUE;
+}
+
 int main(void) {
     // 75% sized, msaa x4 enabled
     window_create(0.75f, WINDOW_MSAA4);
@@ -575,6 +730,26 @@ int main(void) {
 
     // camera that points to origin
     cam = camera();
+
+    gMoveX       = 0;
+    gMoveY       = 0;
+    gStartMoveX  = 0;
+    gStartMoveY  = 0;
+    gRotX        = 0;
+    gRotY        = 0;
+    gPrevRotX    = 0;
+    gPrevRotY    = 0;
+    gPrevTouchX0 = 0;
+    gPrevTouchY0 = 0;
+    gPrevTouchX1 = 0;
+    gPrevTouchY1 = 0;
+    gPrevNT = 0;
+    gPrevSM = 0;
+    gPrevSR = 0;
+    emscripten_get_canvas_element_size("#canvas", &gCanvasWidth, &gCanvasHeight);
+    emscripten_set_touchstart_callback("#canvas", 0, EM_FALSE, &touch_start);
+    emscripten_set_touchmove_callback("#canvas", 0, EM_FALSE, &touch_move);
+    emscripten_set_touchend_callback("#canvas", 0, EM_FALSE, &touch_end);
 
     // main loop
     window_loop(game_loop, NULL);
