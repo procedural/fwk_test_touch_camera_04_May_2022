@@ -21,6 +21,9 @@ long gPrevTouchY0;
 long gPrevTouchX1;
 long gPrevTouchY1;
 int  gSkipTouch;
+int  gAllowMove;             // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
+int  gLeftRightMoveHappened; // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
+int  gRightLeftTouchSetOnce; // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
 
 void game_loop(void *userdata) {
     if(!window_swap()) return;
@@ -47,7 +50,9 @@ void game_loop(void *userdata) {
           startMoveY = gStartMoveY;
         }
       }
-      camera_move(&cam, (moveX - startMoveX) * sensitivity, 0, (startMoveY - moveY) * sensitivity);
+      if (gAllowMove == 1) {
+        camera_move(&cam, (moveX - startMoveX) * sensitivity, 0, (startMoveY - moveY) * sensitivity);
+      }
     }
 
     // key handler
@@ -611,13 +616,21 @@ EM_BOOL touch_start(int eventType, const EmscriptenTouchEvent * e, void * userDa
 
   const int canvasHalfWidth = gCanvasWidth / 2;
 
-  if (gStartMoveX == 0 && gStartMoveY == 0) {
-    if (gx0 > 0 && gx0 < canvasHalfWidth) {
-      gStartMoveX = gx0;
-      gStartMoveY = gy0;
-    } else if (gx1 > 0 && gx1 < canvasHalfWidth) {
+  if (e->numTouches == 2 && gx1 < canvasHalfWidth && gx0 > canvasHalfWidth) { // NOTE(Constantine): For the already holded right + just pressed left touch case.
+    if (gRightLeftTouchSetOnce == 0) {
+      gRightLeftTouchSetOnce = 1;
       gStartMoveX = gx1;
       gStartMoveY = gy1;
+    }
+  } else {
+    if (gStartMoveX == 0 && gStartMoveY == 0) {
+      if (gx0 > 0 && gx0 < canvasHalfWidth) {
+        gStartMoveX = gx0;
+        gStartMoveY = gy0;
+      } else if (gx1 > 0 && gx1 < canvasHalfWidth) {
+        gStartMoveX = gx1;
+        gStartMoveY = gy1;
+      }
     }
   }
 
@@ -637,9 +650,15 @@ EM_BOOL touch_end(int eventType, const EmscriptenTouchEvent * e, void * userData
 
   gSkipTouch = 1;
 
-  if (e->numTouches == 1) {
-    gStartMoveX = 0;
-    gStartMoveY = 0;
+  const int canvasHalfWidth = gCanvasWidth / 2;
+
+  if (e->numTouches == 2 && gx1 < canvasHalfWidth && gx0 > canvasHalfWidth) { // NOTE(Constantine): For the already holded right + just pressed left touch case.
+  } else {
+    if (e->numTouches == 1) {
+      gRightLeftTouchSetOnce = 0;
+      gStartMoveX = 0;
+      gStartMoveY = 0;
+    }
   }
 
   gPrevTouchX0 = gx0;
@@ -656,6 +675,24 @@ EM_BOOL touch_move(int eventType, const EmscriptenTouchEvent * e, void * userDat
   gx1 = e->touches[1].screenX;
   gy1 = e->touches[1].screenY;
 
+  const int canvasHalfWidth = gCanvasWidth / 2;
+
+  // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
+  {
+    if (e->numTouches == 2 && gx0 < canvasHalfWidth && gx1 > canvasHalfWidth) {
+      gAllowMove = 1;
+      gLeftRightMoveHappened = 1;
+    } else {
+      if ((gLeftRightMoveHappened == 1 && e->numTouches == 2 && gx1 < canvasHalfWidth && gx0 > canvasHalfWidth) ||
+          (gLeftRightMoveHappened == 1 && e->numTouches == 1 && gx0 < canvasHalfWidth))
+      {
+        gAllowMove = 1;
+      } else {
+        gAllowMove = 0;
+      }
+    }
+  }
+
   if (gSkipTouch == 1) {
     gSkipTouch = 0;
 
@@ -666,8 +703,6 @@ EM_BOOL touch_move(int eventType, const EmscriptenTouchEvent * e, void * userDat
 
     return EM_TRUE;
   }
-
-  const int canvasHalfWidth = gCanvasWidth / 2;
 
   const float sensitivity = 0.25f;
   long rotX     = 0;
@@ -718,6 +753,9 @@ int main(void) {
     gPrevTouchX1 = 0;
     gPrevTouchY1 = 0;
     gSkipTouch   = 0;
+    gAllowMove   = 0;           // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
+    gLeftRightMoveHappened = 0; // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
+    gRightLeftTouchSetOnce = 0; // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
     emscripten_get_canvas_element_size("#canvas", &gCanvasWidth, &gCanvasHeight);
     emscripten_set_touchstart_callback("#canvas", 0, EM_FALSE, &touch_start);
     emscripten_set_touchend_callback("#canvas", 0, EM_FALSE, &touch_end);
