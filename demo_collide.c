@@ -21,48 +21,9 @@ long gPrevTouchY0;
 long gPrevTouchX1;
 long gPrevTouchY1;
 int  gSkipTouch;
-int  gAllowMove;            // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
-int  gTwoFingerTapHappened; // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
 
 void game_loop(void *userdata) {
     if(!window_swap()) return;
-
-    // NOTE(Constantine): Gamepad camera controls.
-    {
-      EMSCRIPTEN_RESULT result = EMSCRIPTEN_RESULT_SUCCESS;
-      EmscriptenGamepadEvent gamepadState = {};
-      {
-        result = emscripten_sample_gamepad_data();
-        if (result == EMSCRIPTEN_RESULT_SUCCESS) {
-          result = emscripten_get_gamepad_status(0, &gamepadState);
-          if (result == EMSCRIPTEN_RESULT_SUCCESS) {
-            //emscripten_console_log("[EMS] Gamepad reading success!");
-          } else {
-            //emscripten_console_log("[EMS] Gamepad reading error!");
-          }
-        }
-      }
-      // NOTE(Constantine): Hardcoded for an Xbox One controller.
-      const float axisDeadZone    = 0.15f;
-      const int   axisSideMove    = 0;
-      const int   axisForwardMove = 1;
-      const int   axisYaw         = 2;
-      const int   axisPitch       = 3;
-      if (fabs(gamepadState.axis[axisSideMove]) < axisDeadZone) {
-        gamepadState.axis[axisSideMove] = 0;
-      }
-      if (fabs(gamepadState.axis[axisForwardMove]) < axisDeadZone) {
-        gamepadState.axis[axisForwardMove] = 0;
-      }
-      if (fabs(gamepadState.axis[axisYaw]) < axisDeadZone) {
-        gamepadState.axis[axisYaw] = 0;
-      }
-      if (fabs(gamepadState.axis[axisPitch]) < axisDeadZone) {
-        gamepadState.axis[axisPitch] = 0;
-      }
-      camera_move(&cam, gamepadState.axis[axisSideMove], 0.f, -gamepadState.axis[axisForwardMove]);
-      camera_fps(&cam, gamepadState.axis[axisYaw], -gamepadState.axis[axisPitch]);
-    }
 
     // NOTE(Constantine): Touch events for every frame.
     {
@@ -86,9 +47,7 @@ void game_loop(void *userdata) {
           startMoveY = gStartMoveY;
         }
       }
-      if (gAllowMove == 1 && gTwoFingerTapHappened == 1 && gStartMoveX != 0 && gStartMoveY != 0 && ((gx0 > 0 && gx0 < canvasHalfWidth) || (gx1 > 0 && gx1 < canvasHalfWidth))) { // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
-        camera_move(&cam, (moveX - startMoveX) * sensitivity, 0, (startMoveY - moveY) * sensitivity);
-      }
+      camera_move(&cam, (moveX - startMoveX) * sensitivity, 0, (startMoveY - moveY) * sensitivity);
     }
 
     // key handler
@@ -652,13 +611,6 @@ EM_BOOL touch_start(int eventType, const EmscriptenTouchEvent * e, void * userDa
 
   const int canvasHalfWidth = gCanvasWidth / 2;
 
-  // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
-  {
-    if (gx0 < canvasHalfWidth) {
-      gAllowMove = 1;
-    }
-  }
-
   if (gStartMoveX == 0 && gStartMoveY == 0) {
     if (gx0 > 0 && gx0 < canvasHalfWidth) {
       gStartMoveX = gx0;
@@ -683,18 +635,6 @@ EM_BOOL touch_end(int eventType, const EmscriptenTouchEvent * e, void * userData
   gx1 = e->touches[1].screenX;
   gy1 = e->touches[1].screenY;
 
-  const int canvasHalfWidth = gCanvasWidth / 2;
-
-  // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
-  {
-    if (gx0 < canvasHalfWidth) {
-      gAllowMove = 1;
-    }
-    if (gx0 > canvasHalfWidth || (gx0 < canvasHalfWidth && gx1 < canvasHalfWidth)) { // NOTE(Constantine): For tap right + tap left, untap right case, OR, tap right + tap left, move right to left, untap right.
-      gAllowMove = 0;
-    }
-  }
-
   gSkipTouch = 1;
 
   if (e->numTouches == 1) {
@@ -716,19 +656,6 @@ EM_BOOL touch_move(int eventType, const EmscriptenTouchEvent * e, void * userDat
   gx1 = e->touches[1].screenX;
   gy1 = e->touches[1].screenY;
 
-  const int canvasHalfWidth = gCanvasWidth / 2;
-
-  // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
-  {
-    // NOTE(Constantine): Intentionally commented for tap right + tap left, untap right case.
-    //if (gx0 < canvasHalfWidth) {
-    //  gAllowMove = 1;
-    //}
-    if (e->numTouches == 2) {
-      gTwoFingerTapHappened = 1;
-    }
-  }
-
   if (gSkipTouch == 1) {
     gSkipTouch = 0;
 
@@ -739,6 +666,8 @@ EM_BOOL touch_move(int eventType, const EmscriptenTouchEvent * e, void * userDat
 
     return EM_TRUE;
   }
+
+  const int canvasHalfWidth = gCanvasWidth / 2;
 
   const float sensitivity = 0.25f;
   long rotX     = 0;
@@ -789,8 +718,6 @@ int main(void) {
     gPrevTouchX1 = 0;
     gPrevTouchY1 = 0;
     gSkipTouch   = 0;
-    gAllowMove   = 0;          // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
-    gTwoFingerTapHappened = 0; // NOTE(Constantine): Workaround for the mobile landscape touch bug. (C&G::fwk on discord)
     emscripten_get_canvas_element_size("#canvas", &gCanvasWidth, &gCanvasHeight);
     emscripten_set_touchstart_callback("#canvas", 0, EM_FALSE, &touch_start);
     emscripten_set_touchend_callback("#canvas", 0, EM_FALSE, &touch_end);
