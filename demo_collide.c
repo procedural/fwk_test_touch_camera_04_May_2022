@@ -29,6 +29,43 @@ int  gPrevSR;
 void game_loop(void *userdata) {
     if(!window_swap()) return;
 
+    // NOTE(Constantine): Gamepad camera controls.
+    {
+      EMSCRIPTEN_RESULT result = EMSCRIPTEN_RESULT_SUCCESS;
+      EmscriptenGamepadEvent gamepadState = {};
+      {
+        result = emscripten_sample_gamepad_data();
+        if (result == EMSCRIPTEN_RESULT_SUCCESS) {
+          result = emscripten_get_gamepad_status(0, &gamepadState);
+          if (result == EMSCRIPTEN_RESULT_SUCCESS) {
+            //emscripten_console_log("[EMS] Gamepad reading success!");
+          } else {
+            //emscripten_console_log("[EMS] Gamepad reading error!");
+          }
+        }
+      }
+      // NOTE(Constantine): Hardcoded for an Xbox One controller.
+      const float axisDeadZone    = 0.15f;
+      const int   axisSideMove    = 0;
+      const int   axisForwardMove = 1;
+      const int   axisYaw         = 2;
+      const int   axisPitch       = 3;
+      if (fabs(gamepadState.axis[axisSideMove]) < axisDeadZone) {
+        gamepadState.axis[axisSideMove] = 0;
+      }
+      if (fabs(gamepadState.axis[axisForwardMove]) < axisDeadZone) {
+        gamepadState.axis[axisForwardMove] = 0;
+      }
+      if (fabs(gamepadState.axis[axisYaw]) < axisDeadZone) {
+        gamepadState.axis[axisYaw] = 0;
+      }
+      if (fabs(gamepadState.axis[axisPitch]) < axisDeadZone) {
+        gamepadState.axis[axisPitch] = 0;
+      }
+      camera_move(&cam, gamepadState.axis[axisSideMove], 0.f, -gamepadState.axis[axisForwardMove]);
+      camera_fps(&cam, gamepadState.axis[axisYaw], -gamepadState.axis[axisPitch]);
+    }
+
     // NOTE(Constantine): Touch events for every frame.
     {
       const float sensitivityMove = 0.005f;
@@ -743,9 +780,9 @@ int main(void) {
     gPrevTouchY0 = 0;
     gPrevTouchX1 = 0;
     gPrevTouchY1 = 0;
-    gPrevNT = 0;
-    gPrevSM = 0;
-    gPrevSR = 0;
+    gPrevNT      = 0;
+    gPrevSM      = 0;
+    gPrevSR      = 0;
     emscripten_get_canvas_element_size("#canvas", &gCanvasWidth, &gCanvasHeight);
     emscripten_set_touchstart_callback("#canvas", 0, EM_FALSE, &touch_start);
     emscripten_set_touchmove_callback("#canvas", 0, EM_FALSE, &touch_move);
