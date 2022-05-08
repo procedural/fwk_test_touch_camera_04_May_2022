@@ -8,8 +8,53 @@
 int paused;
 camera_t cam;
 
+typedef struct Touch {
+  int   active;
+  float startX;
+  float startY;
+  float prevX;
+  float prevY;
+  float x;
+  float y;
+} Touch;
+
+int   gCanvasWidth;
+int   gCanvasHeight;
+Touch gTouch[32];
+
 void game_loop(void *userdata) {
     if(!window_swap()) return;
+
+    // NOTE(Constantine): Touch events for every frame.
+    {
+      const int   canvasWidthHalf = gCanvasWidth / 2;
+      const float sensitivityMove = 0.005f;
+      const float sensitivityRot  = 0.25f;
+      int move   = -1;
+      int rotate = -1;
+      for (int i = 0; i < 2; i += 1) {
+        if (gTouch[i].active == 1 && gTouch[i].startX < canvasWidthHalf) {
+          move = i;
+          break;
+        }
+      }
+      for (int i = 0; i < 2; i += 1) {
+        if (gTouch[i].active == 1 && gTouch[i].startX > canvasWidthHalf) {
+          rotate = i;
+          break;
+        }
+      }
+      if (move != -1) {
+        camera_move(&cam, (gTouch[move].x - gTouch[move].startX) * sensitivityMove, 0, (gTouch[move].startY - gTouch[move].y) * sensitivityMove);
+      }
+      if (rotate != -1) {
+        camera_fps(&cam, (gTouch[rotate].x - gTouch[rotate].prevX) * sensitivityRot, (gTouch[rotate].prevY - gTouch[rotate].y) * sensitivityRot);
+      }
+      for (int i = 0; i < 32; i += 1) {
+        gTouch[i].prevX = gTouch[i].x;
+        gTouch[i].prevY = gTouch[i].y;
+      }
+    }
 
     // key handler
     if (input_down(KEY_F11) ) window_fullscreen( window_has_fullscreen()^1 );
@@ -564,6 +609,62 @@ void game_loop(void *userdata) {
     }
 }
 
+EM_BOOL touch_start(int eventType, const EmscriptenTouchEvent * e, void * userData) {
+  for (int i = 0; i < e->numTouches; i += 1) {
+    if (e->touches[i].isChanged == EM_FALSE) {
+      continue;
+    }
+    int id = e->touches[i].identifier;
+    if (id < 0 || id >= 32) {
+      continue;
+    }
+    long x = e->touches[i].clientX;
+    long y = e->touches[i].clientY;
+    gTouch[id].active = 1;
+    gTouch[id].startX = x;
+    gTouch[id].startY = y;
+    gTouch[id].prevX  = x;
+    gTouch[id].prevY  = y;
+    gTouch[id].x      = x;
+    gTouch[id].y      = y;
+  }
+
+  return EM_TRUE;
+}
+
+EM_BOOL touch_move(int eventType, const EmscriptenTouchEvent * e, void * userData) {
+  for (int i = 0; i < e->numTouches; i += 1) {
+    if (e->touches[i].isChanged == EM_FALSE) {
+      continue;
+    }
+    int id = e->touches[i].identifier;
+    if (id < 0 || id >= 32) {
+      continue;
+    }
+    long x = e->touches[i].clientX;
+    long y = e->touches[i].clientY;
+    gTouch[id].x = x;
+    gTouch[id].y = y;
+  }
+
+  return EM_TRUE;
+}
+
+EM_BOOL touch_end(int eventType, const EmscriptenTouchEvent * e, void * userData) {
+  for (int i = 0; i < e->numTouches; i += 1) {
+    if (e->touches[i].isChanged == EM_FALSE) {
+      continue;
+    }
+    int id = e->touches[i].identifier;
+    if (id < 0 || id >= 32) {
+      continue;
+    }
+    gTouch[id].active = 0;
+  }
+
+  return EM_TRUE;
+}
+
 int main(void) {
     // 75% sized, msaa x4 enabled
     window_create(0.75f, WINDOW_MSAA4);
@@ -575,6 +676,15 @@ int main(void) {
 
     // camera that points to origin
     cam = camera();
+
+    Touch touchDefaults = {};
+    for (int i = 0; i < 32; i += 1) {
+      gTouch[i] = touchDefaults;
+    }
+    emscripten_get_canvas_element_size("#canvas", &gCanvasWidth, &gCanvasHeight);
+    emscripten_set_touchstart_callback("#canvas", 0, EM_FALSE, &touch_start);
+    emscripten_set_touchmove_callback("#canvas", 0, EM_FALSE, &touch_move);
+    emscripten_set_touchend_callback("#canvas", 0, EM_FALSE, &touch_end);
 
     // main loop
     window_loop(game_loop, NULL);
